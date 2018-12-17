@@ -77,7 +77,7 @@ namespace ArcGISRuntime.UWP.Samples.ChangeEncDisplaySettings
                 Envelope fullExtent = GeometryEngine.CombineExtents(dataSetExtents);
 
                 // Set the viewpoint
-                MyMapView.SetViewpoint(new Viewpoint(fullExtent));
+                await MyMapView.SetViewpointAsync(new Viewpoint(fullExtent));
 
                 // Subscribe to notifications about leaving so that settings can be re-set
                 this.Unloaded += SampleUnloaded;

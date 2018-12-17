@@ -77,7 +77,7 @@ namespace ArcGISRuntime.UWP.Samples.SelectEncFeatures
                 Envelope fullExtent = GeometryEngine.CombineExtents(dataSetExtents);
 
                 // Set the viewpoint
-                MyMapView.SetViewpoint(new Viewpoint(fullExtent));
+                await MyMapView.SetViewpointAsync(new Viewpoint(fullExtent));
 
                 // Subscribe to tap events (in order to use them to identify and select features)
                 MyMapView.GeoViewTapped += MyMapView_GeoViewTapped;
