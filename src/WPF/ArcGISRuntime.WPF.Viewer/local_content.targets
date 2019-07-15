@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- Link resource files, to include them in the output directory and application manifest. -->
+
+  <!-- Readmes -->
+  <ItemGroup>
+    <Content Include="Samples\**\*.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- JSON metadata -->
+  <ItemGroup>
+    <None Include="Samples\**\*.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Sample Code Viewer .cs Files -->
+  <ItemGroup>
+    <Content Include="Samples\**\*.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Sample Code Viewer .xaml Files -->
+  <ItemGroup>
+    <None Include="Samples\**\*.xaml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
