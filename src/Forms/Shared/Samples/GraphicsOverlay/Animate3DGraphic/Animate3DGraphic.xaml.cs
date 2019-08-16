@@ -240,52 +240,60 @@ namespace ArcGISRuntime.Samples.Animate3DGraphic
             // Skip doing anything if animation is paused
             if (!_animationTimer) { return true; }
 
-            // Get the next position; % prevents going out of bounds even if the keyframe value is
-            //     changed unexpectedly (e.g. due to user interaction with the progress slider).
-            MissionFrame currentFrame = _missionData[_keyframe % _frameCount];
-
-            // Update the UI
-            double missionProgress = _keyframe / (double)_frameCount;
-
-            // This is needed because the event could be running on a non-UI thread
-            Device.BeginInvokeOnMainThread(() =>
+            try
             {
-                // Update the progress slider; temporarily remove event subscription to avoid feedback loop
-                MissionProgressBar.ValueChanged -= MissionProgressOnSeek;
-                MissionProgressBar.Value = missionProgress * 100;
-                MissionProgressBar.ValueChanged += MissionProgressOnSeek;
+                // Get the next position; % prevents going out of bounds even if the keyframe value is
+                //     changed unexpectedly (e.g. due to user interaction with the progress slider).
+                MissionFrame currentFrame = _missionData[_keyframe % _frameCount];
 
-                // Update stats display
-                AltitudeLabel.Text = $"{currentFrame.Elevation:F}m";
-                HeadingLabel.Text = $"{currentFrame.Heading:F}°";
-                PitchLabel.Text = $"{currentFrame.Pitch:F}°";
-                RollLabel.Text = $"{currentFrame.Pitch:F}°";
-            });
+                // Update the UI
+                double missionProgress = _keyframe / (double)_frameCount;
 
-            // Update plane's position
-            _plane3D.Geometry = currentFrame.ToMapPoint();
-            _plane3D.Attributes["HEADING"] = currentFrame.Heading;
-            _plane3D.Attributes["PITCH"] = currentFrame.Pitch;
-            _plane3D.Attributes["ROLL"] = currentFrame.Roll;
+                // This is needed because the event could be running on a non-UI thread
+                Device.BeginInvokeOnMainThread(() =>
+                {
+                    // Update the progress slider; temporarily remove event subscription to avoid feedback loop
+                    MissionProgressBar.ValueChanged -= MissionProgressOnSeek;
+                    MissionProgressBar.Value = missionProgress * 100;
+                    MissionProgressBar.ValueChanged += MissionProgressOnSeek;
 
-            // Update the inset map; plane symbol position
-            _plane2D.Geometry = currentFrame.ToMapPoint();
-            // Update inset's viewpoint and heading
-            Viewpoint vp = new Viewpoint(currentFrame.ToMapPoint(), InsetMapView.MapScale,
-                360 + (float)currentFrame.Heading);
-            InsetMapView.SetViewpoint(vp);
+                    // Update stats display
+                    AltitudeLabel.Text = $"{currentFrame.Elevation:F}m";
+                    HeadingLabel.Text = $"{currentFrame.Heading:F}°";
+                    PitchLabel.Text = $"{currentFrame.Pitch:F}°";
+                    RollLabel.Text = $"{currentFrame.Pitch:F}°";
+                });
 
-            // Update the keyframe. This advances the animation
-            _keyframe++;
+                // Update plane's position
+                _plane3D.Geometry = currentFrame.ToMapPoint();
+                _plane3D.Attributes["HEADING"] = currentFrame.Heading;
+                _plane3D.Attributes["PITCH"] = currentFrame.Pitch;
+                _plane3D.Attributes["ROLL"] = currentFrame.Roll;
 
-            // Restart the animation if it has finished
-            if (_keyframe >= _frameCount)
-            {
-                _keyframe = 0;
+                // Update the inset map; plane symbol position
+                _plane2D.Geometry = currentFrame.ToMapPoint();
+                // Update inset's viewpoint and heading
+                Viewpoint vp = new Viewpoint(currentFrame.ToMapPoint(), InsetMapView.MapScale,
+                    360 + (float)currentFrame.Heading);
+                InsetMapView.SetViewpoint(vp);
+
+                // Update the keyframe. This advances the animation
+                _keyframe++;
+
+                // Restart the animation if it has finished
+                if (_keyframe >= _frameCount)
+                {
+                    _keyframe = 0;
+                }
+
+                // Keep the animation event going
+                return true;
             }
-
-            // Keep the animation event going
-            return true;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+                return false;
+            }
         }
 
         private static string GetModelPath()
