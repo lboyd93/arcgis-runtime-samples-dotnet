@@ -5,7 +5,7 @@
     xmlns:esri="http://schemas.esri.com/arcgis/runtime/2013">
     <Grid>
         <esri:MapView x:Name="MyMapView" />
-        <Border Style="{StaticResource BorderStyle}" Width="300">
+        <Border Width="300" Style="{StaticResource BorderStyle}">
             <Grid x:Name="InfoPanel">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -17,24 +17,44 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-                           FontWeight="Bold" HorizontalAlignment="Center"
-                           Text="{Binding Credits}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                           Margin="5"
-                           TextWrapping="Wrap"
-                           Text="{Binding Summary}" />
-                <Image x:Name="ShapefileThumbnailImage"
-                       Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                       Margin="5" />
-                <TextBlock FontWeight="Bold" Margin="5"
-                           VerticalAlignment="Center"
-                           Grid.Row="3" Grid.Column="0"
-                           Text="Tags:" />
-                <ListBox Height="80" HorizontalAlignment="Stretch"
-                         Grid.Row="3" Grid.Column="1"
-                         Margin="0,5,5,0"
-                         ItemsSource="{Binding Tags}" />
+                <TextBlock
+                    Grid.Row="0"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    HorizontalAlignment="Center"
+                    FontWeight="Bold"
+                    Text="{Binding Credits}" />
+                <TextBlock
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    Margin="5"
+                    Text="{Binding Summary}"
+                    TextWrapping="Wrap" />
+                <Image
+                    x:Name="ShapefileThumbnailImage"
+                    Grid.Row="2"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="2"
+                    Margin="5" />
+                <TextBlock
+                    Grid.Row="3"
+                    Grid.Column="0"
+                    Margin="5"
+                    VerticalAlignment="Center"
+                    FontWeight="Bold"
+                    Text="Tags:" />
+                <ListView
+                    Grid.Row="3"
+                    Grid.Column="1"
+                    MaxHeight="100"
+                    ItemsSource="{Binding Tags}">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Focusable" Value="false" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
             </Grid>
         </Border>
     </Grid>
