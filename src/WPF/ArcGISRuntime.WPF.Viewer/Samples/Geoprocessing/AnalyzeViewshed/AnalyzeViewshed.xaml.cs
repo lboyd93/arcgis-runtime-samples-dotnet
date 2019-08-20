@@ -224,14 +224,14 @@ namespace ArcGISRuntime.WPF.Samples.AnalyzeViewshed
                 // Change UI to indicate that the geoprocessing is running
                 _isExecutingGeoprocessing = true;
                 BusyOverlay.Visibility = Visibility.Visible;
-                Progress.IsIndeterminate = true;
+                Instructions.Visibility = Visibility.Collapsed;
             }
             else
             {
                 // Change UI to indicate that the geoprocessing is not running
                 _isExecutingGeoprocessing = false;
                 BusyOverlay.Visibility = Visibility.Collapsed;
-                Progress.IsIndeterminate = false;
+                Instructions.Visibility = Visibility.Visible;
             }
         }
     }
