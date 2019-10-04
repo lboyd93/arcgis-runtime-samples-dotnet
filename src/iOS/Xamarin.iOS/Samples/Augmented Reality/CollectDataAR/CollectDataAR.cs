@@ -1,8 +1,19 @@
-﻿using CoreGraphics;
+﻿// Copyright 2019 Esri.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific
+// language governing permissions and limitations under the License.
+
+
+using CoreGraphics;
 using CoreImage;
 using Esri.ArcGISRuntime.ARToolkit;
 using Esri.ArcGISRuntime.Data;
 using Esri.ArcGISRuntime.Geometry;
+using Esri.ArcGISRuntime.Location;
 using Esri.ArcGISRuntime.Mapping;
 using Esri.ArcGISRuntime.Symbology;
 using Esri.ArcGISRuntime.UI;
@@ -35,7 +46,6 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
 
         private bool _changingScale;
 
-        private FeatureLayer _featureLayer;
         private ServiceFeatureTable _featureTable = new ServiceFeatureTable(new Uri("https://services2.arcgis.com/ZQgQTuoyBrtmoGdP/arcgis/rest/services/AR_Tree_Survey/FeatureServer/0"));
 
         private ArcGISTiledElevationSource _elevationSource;
@@ -133,11 +143,13 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             {
                 await _arView.StopTrackingAsync();
                 await _arView.StartTrackingAsync(ARLocationTrackingMode.Continuous);
+                _calibrationVC.SetIsUsingContinuousPositioning(true);
             }
             else
             {
                 await _arView.StopTrackingAsync();
-                await _arView.StartTrackingAsync(ARLocationTrackingMode.Initial);
+                await _arView.StartTrackingAsync(ARLocationTrackingMode.Ignore);
+                _calibrationVC.SetIsUsingContinuousPositioning(false);
             }
             ((UISegmentedControl)sender).Enabled = true;
             _changingScale = false;
@@ -160,6 +172,9 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             // Add the location data source to the AR view.
             _arView.LocationDataSource = _locationSource;
 
+            // Listen for location changes to update the route tracker.
+            _locationSource.LocationChanged += TrackingDataSource_LocationChanged;
+
             // Create and add the elevation source.
             _elevationSource = new ArcGISTiledElevationSource(new Uri("https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer"));
             _elevationSurface = new Surface();
@@ -170,19 +185,33 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             _elevationSurface.NavigationConstraint = NavigationConstraint.None;
             _elevationSurface.Opacity = 0;
 
+            // Configure scene view display for real-scale AR: no space effect or atmosphere effect.
+            _arView.SpaceEffect = SpaceEffect.None;
+            _arView.AtmosphereEffect = AtmosphereEffect.None;
+
             // Add a graphics overlay for displaying points in AR.
             _graphicsOverlay = new GraphicsOverlay();
             _graphicsOverlay.SceneProperties.SurfacePlacement = SurfacePlacement.Absolute;
             _graphicsOverlay.Renderer = new SimpleRenderer(_tappedPointSymbol);
             _arView.GraphicsOverlays.Add(_graphicsOverlay);
 
-            
-
+            // Add the event for the user tapping the screen.
             _arView.GeoViewTapped += arViewTapped;
+        }
+
+        private void TrackingDataSource_LocationChanged(object sender, Location e)
+        {
+            //
         }
 
         private void arViewTapped(object sender, GeoViewInputEventArgs e)
         {
+            // Don't add features when calibrating the AR view.
+            if(_isCalibrating)
+            {
+                return;
+            }
+
             // Try to get the real-world position of that tapped AR plane.
             var planeLocation = _arView.ARScreenToLocation(e.Position);
 
@@ -213,13 +242,30 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 pc.BarButtonItem = _calibrateButton;
                 pc.PermittedArrowDirections = UIPopoverArrowDirection.Down;
                 ppDelegate popoverDelegate = new ppDelegate();
-
                 // Stop calibration when the popover closes.
                 popoverDelegate.UserDidDismissPopover += (o, e) => IsCalibrating = false;
                 pc.Delegate = popoverDelegate;
+                pc.PassthroughViews = new UIView[]{ View};
             }
 
             PresentViewController(_calibrationVC, true, null);
+        }
+
+        // Force popover to display on iPhone.
+        private class ppDelegate : UIPopoverPresentationControllerDelegate
+        {
+            // Public event enables detection of popover close. When the popover closes, calibration should stop.
+            public EventHandler UserDidDismissPopover;
+            public override UIModalPresentationStyle GetAdaptivePresentationStyle(
+                UIPresentationController forPresentationController) => UIModalPresentationStyle.None;
+
+            public override UIModalPresentationStyle GetAdaptivePresentationStyle(UIPresentationController controller,
+                UITraitCollection traitCollection) => UIModalPresentationStyle.None;
+
+            public override void DidDismissPopover(UIPopoverPresentationController popoverPresentationController)
+            {
+                UserDidDismissPopover?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         private async void AddButtonPressed(object sender, EventArgs e)
@@ -232,29 +278,48 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             }
             try
             {
-                int healthValue = await getTreeHealthValue();
+                // Prevent the user from changing the tapped feature.
+                _arView.GeoViewTapped -= arViewTapped;
+
+                // Prompt the user for the health value of the tree.
+                int healthValue = await GetTreeHealthValue();
 
                 CoreVideo.CVPixelBuffer coreVideoBuffer = _arView.ARSCNView.Session.CurrentFrame?.CapturedImage;
                 if (coreVideoBuffer != null)
                 {
-                    var coreImage = new CIImage(coreVideoBuffer);
+                    // Get the current frame from the video buffer.
+                    CIImage coreImage = new CIImage(coreVideoBuffer);
+
+                    // Rotate the image to the right. (This assumes that the device is in portrait mode.)
                     coreImage = coreImage.CreateByApplyingOrientation(ImageIO.CGImagePropertyOrientation.Right);
-                    var imageRef = new CIContext().CreateCGImage(coreImage, new CGRect(0, 0, coreVideoBuffer.Height, coreVideoBuffer.Width));
-                    var rotatedImage = new UIImage(imageRef);
-                    CreateFeature(rotatedImage, healthValue);
+
+                    // Create a CoreGraphics image using the CoreImage image.
+                    CGImage imageRef = new CIContext().CreateCGImage(coreImage, new CGRect(0, 0, coreVideoBuffer.Height, coreVideoBuffer.Width));
+
+                    // Create a UIImage using the CoreImage image.
+                    UIImage rotatedImage = new UIImage(imageRef);
+
+                    // Create a new ArcGIS feature and add it to the feature service.
+                    await CreateFeature(rotatedImage, healthValue);
                 }
                 else
                 {
                     new UIAlertView("Error", "Didn't get image for tap.", (IUIAlertViewDelegate)null, "OK", null).Show();
                 }
             }
+            // This exception is thrown when the user cancels out of the prompt.
             catch (TaskCanceledException)
             {
                 return;
             }
+            finally
+            {
+                // Restore the event listener for adding new features.
+                _arView.GeoViewTapped += arViewTapped;
+            }
         }
 
-        private async Task<int> getTreeHealthValue()
+        private async Task<int> GetTreeHealthValue()
         {
             // Create a new copmletion source for the prompt.
             TaskCompletionSource<int> _healthCompletionSource = new TaskCompletionSource<int>();
@@ -327,34 +392,20 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             }
         }
 
-        // Force popover to display on iPhone.
-        private class ppDelegate : UIPopoverPresentationControllerDelegate
-        {
-            // Public event enables detection of popover close. When the popover closes, calibration should stop.
-            public EventHandler UserDidDismissPopover;
-
-            public override UIModalPresentationStyle GetAdaptivePresentationStyle(
-                UIPresentationController forPresentationController) => UIModalPresentationStyle.None;
-
-            public override UIModalPresentationStyle GetAdaptivePresentationStyle(UIPresentationController controller,
-                UITraitCollection traitCollection) => UIModalPresentationStyle.None;
-
-            public override void DidDismissPopover(UIPopoverPresentationController popoverPresentationController)
-            {
-                UserDidDismissPopover?.Invoke(this, EventArgs.Empty);
-            }
-        }
-
-        public override void ViewDidAppear(bool animated)
+        public override async void ViewDidAppear(bool animated)
         {
             base.ViewDidAppear(animated);
-            _arView.StartTrackingAsync(ARLocationTrackingMode.Initial);
+
+            // Start tracking as soon as the view has been shown.
+            await _arView.StartTrackingAsync(ARLocationTrackingMode.Continuous);
         }
 
-        public override void ViewDidDisappear(bool animated)
+        public override async void ViewDidDisappear(bool animated)
         {
             base.ViewDidDisappear(animated);
-            _arView.StopTrackingAsync();
+
+            // Stop ARKit tracking and unsubscribe from events when the view closes.
+            await _arView?.StopTrackingAsync();
         }
     }
 
@@ -368,6 +419,7 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
         private AdjustableLocationDataSource _locationSource;
         private NSTimer _headingTimer;
         private NSTimer _elevationTimer;
+        private bool _isContinuous = true;
 
         public CalibrationViewController(ARSceneView arView, AdjustableLocationDataSource locationSource)
         {
@@ -417,6 +469,19 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             return row;
         }
 
+        public void SetIsUsingContinuousPositioning(bool continuous)
+        {
+            _isContinuous = continuous;
+            if(_isContinuous)
+            {
+                _elevationSlider.Enabled = true;
+            }
+            else
+            {
+                _elevationSlider.Enabled = false;
+            }
+        }
+
         private void HeadingSlider_ValueChanged(object sender, EventArgs e)
         {
             if (_headingTimer == null)
@@ -443,7 +508,7 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
 
         private void ElevationSlider_ValueChanged(object sender, EventArgs e)
         {
-            if (_elevationTimer == null)
+            if (_elevationTimer == null && _isContinuous)
             {
                 // Use a timer to continuously update elevation while the user is interacting (joystick effect).
                 _elevationTimer = new NSTimer(NSDate.Now, 0.1, true, (timer) =>
@@ -482,14 +547,14 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
 
         private void TouchUpHeading(object sender, EventArgs e)
         {
-            _headingTimer.Invalidate();
+            _headingTimer?.Invalidate();
             _headingTimer = null;
             _headingSlider.Value = 0;
         }
 
         private void TouchUpElevation(object sender, EventArgs e)
         {
-            _elevationTimer.Invalidate();
+            _elevationTimer?.Invalidate();
             _elevationTimer = null;
             _elevationSlider.Value = 0;
         }
