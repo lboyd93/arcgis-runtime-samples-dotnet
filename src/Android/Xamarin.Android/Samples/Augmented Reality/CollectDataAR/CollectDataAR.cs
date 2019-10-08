@@ -18,9 +18,9 @@ using Esri.ArcGISRuntime.Symbology;
 using Esri.ArcGISRuntime.Tasks.NetworkAnalysis;
 using Esri.ArcGISRuntime.UI;
 using Esri.ArcGISRuntime.UI.Controls;
+using Java.Nio;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Surface = Esri.ArcGISRuntime.Mapping.Surface;
 
@@ -297,11 +297,13 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
         private async void AddButtonPressed(object sender, EventArgs e)
         {
             // Check if the user has already tapped a point.
+            /*
             if (!_graphicsOverlay.Graphics.Any())
             {
                 ShowMessage("Didn't find anything, try again.", "Error");
                 return;
             }
+            */
             try
             {
                 // Prevent the user from changing the tapped feature.
@@ -311,11 +313,12 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 int healthValue = await GetTreeHealthValue();
 
                 // Get the camera image for the frame.
-                var coreVideoBuffer = _arView.ArSceneView.ArFrame.AcquireCameraImage();
-                if (coreVideoBuffer != null)
+                Image capturedImage = _arView.ArSceneView.ArFrame.AcquireCameraImage();
+
+                if (capturedImage != null)
                 {
                     // Create a new ArcGIS feature and add it to the feature service.
-                    await CreateFeature(coreVideoBuffer, healthValue);
+                    await CreateFeature(capturedImage, healthValue);
                 }
                 else
                 {
@@ -380,8 +383,8 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             try
             {
                 // Get the geometry of the feature.
-                MapPoint featurePoint = _graphicsOverlay.Graphics.First().Geometry as MapPoint;
-
+                //MapPoint featurePoint = _graphicsOverlay.Graphics.First().Geometry as MapPoint;
+                MapPoint featurePoint = new MapPoint(0, 0);
                 // Create attributes for the feature using the user selected health value.
                 IEnumerable<KeyValuePair<string, object>> featureAttributes = new Dictionary<string, object>() { { "Health", (short)healthValue }, { "Height", 3.2 }, { "Diameter", 1.2 } };
 
@@ -390,13 +393,48 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 {
                     await _featureTable.LoadAsync();
                 }
-
                 // Create the new feature
                 ArcGISFeature newFeature = _featureTable.CreateFeature(featureAttributes, featurePoint) as ArcGISFeature;
 
+                if (capturedImage.Format == Android.Graphics.ImageFormatType.Jpeg)
+                {
+                }
+
+                // https://stackoverflow.com/questions/51507549/android-media-image-to-byte
                 // Convert the image into a byte array.
-                ///capturedImage.GetPlanes()[0].
-                byte[] attachmentData = new byte[0];
+                ByteBuffer yBuffer = capturedImage.GetPlanes()[0].Buffer;
+                ByteBuffer uBuffer = capturedImage.GetPlanes()[1].Buffer;
+                ByteBuffer vBuffer = capturedImage.GetPlanes()[2].Buffer;
+
+                int ySize = yBuffer.Remaining();
+                int uSize = uBuffer.Remaining();
+                int vSize = vBuffer.Remaining();
+
+                // Make a byte array large enough to store the buffers from all three planes.
+                byte[] nv21ByteArray = new byte[ySize + uSize + vSize];
+
+                // Load the byte array using the byte buffers.
+                yBuffer.Get(nv21ByteArray, 0, ySize);
+                vBuffer.Get(nv21ByteArray, ySize, vSize);
+                uBuffer.Get(nv21ByteArray, ySize + vSize, uSize);
+
+                //Rotate the nv21 byte array 90 degrees to the right.
+
+                byte[] rotatedNV21 = RotateNV21ImageRight(nv21ByteArray, capturedImage.Width, capturedImage.Height);
+
+                //Create a YuvImage using the nv21 image
+                Android.Graphics.YuvImage yuv = new Android.Graphics.YuvImage(rotatedNV21, Android.Graphics.ImageFormatType.Nv21, capturedImage.Height, capturedImage.Width, null);
+
+                // Convert the YuvImage into a jpeg.
+                System.IO.Stream jpegStream = new System.IO.MemoryStream();
+                await yuv.CompressToJpegAsync(new Android.Graphics.Rect(0, 0, yuv.Width, yuv.Height), 100, jpegStream);
+
+                // Store the jpeg data in a byte array.
+                jpegStream.Position = 0;
+                byte[] attachmentData = new byte[jpegStream.Length];
+                jpegStream.Read(attachmentData, 0, attachmentData.Length);
+
+                var x = jpegStream.Length;
                 // Add the attachment.
                 // The contentType string is the MIME type for JPEG files, image/jpeg.
                 await newFeature.AddAttachmentAsync("tree.jpg", "image/jpeg", attachmentData);
@@ -417,6 +455,36 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 Console.WriteLine(ex.Message);
                 ShowMessage("Could not create feature", "Error");
             }
+        }
+
+        //https://stackoverflow.com/questions/6853401/camera-pixels-rotated/31425229#31425229
+        private byte[] RotateNV21ImageRight(byte[] nv21ByteArray, int width, int height)
+        {
+            byte[] output = new byte[nv21ByteArray.Length];
+            int frameSize = width * height;
+
+            for (int j = 0; j < height; j++)
+            {
+                for (int i = 0; i < width; i++)
+                {
+                    int yIn = j * width + i;
+                    int uIn = frameSize + (j >> 1) * width + (i & ~1);
+                    int vIn = uIn + 1;
+
+                    int iOut = height - j - 1;
+                    int jOut = width - i - 1;
+
+                    int yOut = jOut * height + iOut;
+                    int uOut = frameSize + (jOut >> 1) * height + (iOut & ~1);
+                    int vOut = uOut + 1;
+
+                    output[yOut] = (byte)(0xff & nv21ByteArray[yIn]);
+                    output[uOut] = (byte)(0xff & nv21ByteArray[uIn]);
+                    output[vOut] = (byte)(0xff & nv21ByteArray[vIn]);
+                }
+            }
+
+            return output;
         }
 
         protected override async void OnPause()
