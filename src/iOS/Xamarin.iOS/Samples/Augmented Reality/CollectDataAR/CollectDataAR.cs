@@ -13,7 +13,6 @@ using CoreImage;
 using Esri.ArcGISRuntime.ARToolkit;
 using Esri.ArcGISRuntime.Data;
 using Esri.ArcGISRuntime.Geometry;
-using Esri.ArcGISRuntime.Location;
 using Esri.ArcGISRuntime.Mapping;
 using Esri.ArcGISRuntime.Symbology;
 using Esri.ArcGISRuntime.UI;
@@ -37,6 +36,7 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
     [ArcGISRuntime.Samples.Shared.Attributes.OfflineData()]
     public class CollectDataAR : UIViewController
     {
+        // UI controls.
         private ARSceneView _arView;
         private UILabel _helpLabel;
         private UIBarButtonItem _calibrateButton;
@@ -44,20 +44,25 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
         private CalibrationViewController _calibrationVC;
         private UISegmentedControl _realScalePicker;
 
+        // Track when user is changing between AR and GPS localization.
         private bool _changingScale;
 
+        // Track whether or not the user is calibrating the AR scene view.
+        private bool _isCalibrating = false;
+
+        // Feature table for collected data about trees.
         private ServiceFeatureTable _featureTable = new ServiceFeatureTable(new Uri("https://services2.arcgis.com/ZQgQTuoyBrtmoGdP/arcgis/rest/services/AR_Tree_Survey/FeatureServer/0"));
 
+        // Elevation source for AR scene calibration.
         private ArcGISTiledElevationSource _elevationSource;
         private Surface _elevationSurface;
 
+        // Graphics for tapped points in the scene.
         private GraphicsOverlay _graphicsOverlay;
         private SimpleMarkerSceneSymbol _tappedPointSymbol = new SimpleMarkerSceneSymbol(SimpleMarkerSceneSymbolStyle.Diamond, System.Drawing.Color.Orange, 0.5, 0.5, 0.5, SceneSymbolAnchorPosition.Center);
 
         // Location data source for AR and route tracking.
         private AdjustableLocationDataSource _locationSource = new AdjustableLocationDataSource();
-
-        private bool _isCalibrating = false;
 
         private bool IsCalibrating
         {
@@ -67,11 +72,13 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 _isCalibrating = value;
                 if (_isCalibrating)
                 {
+                    // Show the base surface so that the user can calibrate using the base surface on top of the real world.
                     _arView.Scene.BaseSurface.Opacity = 0.5;
                     ShowCalibrationPopover();
                 }
                 else
                 {
+                    // Hide the base surface.
                     _arView.Scene.BaseSurface.Opacity = 0;
                     _calibrationVC.DismissViewController(true, null);
                 }
@@ -133,24 +140,35 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
 
         private async void RealScaleValueChanged(object sender, EventArgs e)
         {
+            // Prevent this from being called concurrently
             if (_changingScale)
             {
                 return;
             }
             _changingScale = true;
+
+            // Disable the associated UI control while switching.
             ((UISegmentedControl)sender).Enabled = false;
+
+            // Check if using roaming for AR location mode.
             if (((UISegmentedControl)sender).SelectedSegment == 0)
             {
                 await _arView.StopTrackingAsync();
+
+                // Start AR tracking using a continuous GPS signal.
                 await _arView.StartTrackingAsync(ARLocationTrackingMode.Continuous);
                 _calibrationVC.SetIsUsingContinuousPositioning(true);
             }
             else
             {
                 await _arView.StopTrackingAsync();
+
+                // Start AR tracking without using a GPS signal.
                 await _arView.StartTrackingAsync(ARLocationTrackingMode.Ignore);
                 _calibrationVC.SetIsUsingContinuousPositioning(false);
             }
+
+            // Re-enable the UI control.
             ((UISegmentedControl)sender).Enabled = true;
             _changingScale = false;
         }
@@ -171,9 +189,6 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
 
             // Add the location data source to the AR view.
             _arView.LocationDataSource = _locationSource;
-
-            // Listen for location changes to update the route tracker.
-            _locationSource.LocationChanged += TrackingDataSource_LocationChanged;
 
             // Create and add the elevation source.
             _elevationSource = new ArcGISTiledElevationSource(new Uri("https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer"));
@@ -199,11 +214,6 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             _arView.GeoViewTapped += arViewTapped;
         }
 
-        private void TrackingDataSource_LocationChanged(object sender, Location e)
-        {
-            //
-        }
-
         private void arViewTapped(object sender, GeoViewInputEventArgs e)
         {
             // Don't add features when calibrating the AR view.
@@ -213,20 +223,23 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             }
 
             // Try to get the real-world position of that tapped AR plane.
-            var planeLocation = _arView.ARScreenToLocation(e.Position);
+            MapPoint planeLocation = _arView.ARScreenToLocation(e.Position);
 
             // Remove any existing graphics.
             _graphicsOverlay.Graphics.Clear();
 
+
+            // Check if a Map Point was identified.
             if (planeLocation != null)
             {
+                // Add a graphic at the tapped location.
                 _graphicsOverlay.Graphics.Add(new Graphic(planeLocation));
                 _addButton.Enabled = true;
                 _helpLabel.Text = "Placed relative to ARKit plane";
             }
             else
             {
-                new UIAlertView("Error", "Din't find anything, try again.", (IUIAlertViewDelegate)null, "OK", null).Show();
+                new UIAlertView("Error", "Didn't find anything, try again.", (IUIAlertViewDelegate)null, "OK", null).Show();
                 _addButton.Enabled = false;
             }
         }
@@ -242,12 +255,12 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 pc.BarButtonItem = _calibrateButton;
                 pc.PermittedArrowDirections = UIPopoverArrowDirection.Down;
                 ppDelegate popoverDelegate = new ppDelegate();
+
                 // Stop calibration when the popover closes.
                 popoverDelegate.UserDidDismissPopover += (o, e) => IsCalibrating = false;
                 pc.Delegate = popoverDelegate;
-                pc.PassthroughViews = new UIView[]{ View};
+                pc.PassthroughViews = new UIView[]{ View };
             }
-
             PresentViewController(_calibrationVC, true, null);
         }
 
@@ -284,6 +297,7 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
                 // Prompt the user for the health value of the tree.
                 int healthValue = await GetTreeHealthValue();
 
+                // Get the video buffer for the camera.
                 CoreVideo.CVPixelBuffer coreVideoBuffer = _arView.ARSCNView.Session.CurrentFrame?.CapturedImage;
                 if (coreVideoBuffer != null)
                 {
@@ -341,6 +355,7 @@ namespace ArcGISRuntimeXamarin.Samples.CollectDataAR
             // Present the prompt to the user.
             PresentViewController(prompt, true, null);
 
+            // Return the selected health value.
             return await _healthCompletionSource.Task;
         }
 
